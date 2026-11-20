@@ -1,4 +1,5 @@
 import os
+import time
 import streamlit as st
 import json
 import requests
@@ -31,7 +32,15 @@ st.sidebar.markdown('[Get a free API key (Google AI Studio)](https://aistudio.go
 st.sidebar.markdown('[NewsAPI](https://newsapi.org)')
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"  # free-tier Flash model; override with GEMINI_MODEL
+# Free-tier models, tried in order. If one is busy (503), rate-limited (429)
+# or not available (404), the next one is used. GEMINI_MODEL, if set, is tried first.
+FALLBACK_GEMINI_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+]
+RETRY_STATUSES = {500, 503}  # temporary server errors worth retrying
 MAX_ARTICLE_CHARS = 20000  # keep requests small to stay within free-tier token limits
 
 SUMMARY_PROMPT = (
@@ -65,22 +74,41 @@ def get_newsapi_client():
     return NewsApiClient(api_key=get_key("NEWSAPI_KEY"))
 
 
+def gemini_models():
+    preferred = get_key("GEMINI_MODEL", "")
+    models = [preferred] if preferred else []
+    return models + [m for m in FALLBACK_GEMINI_MODELS if m != preferred]
+
+
 @st.cache_data(ttl=24 * 3600, show_spinner=False)
 def fetch_summary(text):
     # Cached by article text, so the same article is only summarized once a day.
     # Errors are raised (not shown here) so a failed call is never cached.
-    model = get_key("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
     headers = {'x-goog-api-key': get_key("GEMINI_API_KEY"), 'content-type': 'application/json'}
     payload = {
         'contents': [{'parts': [{'text': SUMMARY_PROMPT.format(article=text[:MAX_ARTICLE_CHARS])}]}]
     }
-    r = requests.post(GEMINI_URL.format(model=model), json=payload, headers=headers, timeout=60)
-    r.raise_for_status()
-    parts = r.json()['candidates'][0]['content']['parts']
-    summary_text = ''.join(p.get('text', '') for p in parts if not p.get('thought')).strip()
-    if not summary_text:
-        raise KeyError('empty summary')
-    return summary_text
+    last_error = None
+    for model in gemini_models():
+        for attempt in range(2):  # one retry per model for temporary errors
+            r = requests.post(GEMINI_URL.format(model=model), json=payload, headers=headers, timeout=60)
+            if r.ok:
+                parts = r.json()['candidates'][0]['content']['parts']
+                summary_text = ''.join(p.get('text', '') for p in parts if not p.get('thought')).strip()
+                if not summary_text:
+                    raise KeyError('empty summary')
+                return summary_text
+            try:
+                r.raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                last_error = e
+            if r.status_code in RETRY_STATUSES and attempt == 0:
+                time.sleep(2)
+                continue
+            break  # move on to the next model
+        if r.status_code not in RETRY_STATUSES | {404, 429}:
+            raise last_error  # e.g. 400/403: a key or request problem, other models won't help
+    raise last_error
 
 
 @st.cache_data(ttl=15 * 60, show_spinner=False)
@@ -106,8 +134,11 @@ def run():
             st.error(str(e))
             return None
         except requests.exceptions.HTTPError as e:
-            if e.response is not None and e.response.status_code == 429:
+            status = e.response.status_code if e.response is not None else None
+            if status == 429:
                 st.error("The free Gemini API limit has been reached. Please try again later.")
+            elif status in (500, 503):
+                st.error("Gemini is busy right now. Please try again in a minute.")
             else:
                 st.error(f"Error calling Gemini API: {str(e)}")
             return None
