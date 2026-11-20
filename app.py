@@ -9,46 +9,59 @@ st.set_page_config(page_title='Short News App',
     layout = 'wide',
     initial_sidebar_state = 'expanded',
     menu_items={
-        'About':'This is a demo application with One AI',
-        'Get help':'https://studio.oneai.com/docs',
-        'Report a Bug':'https://discord.com/channels/941458663493746698/941458828187287603'
+        'About': 'A demo news app that summarizes articles with Google Gemini.',
+        'Get help': 'https://ai.google.dev/gemini-api/docs',
+        'Report a Bug': 'https://github.com/rajeshai/news-oneai-streamlit/issues'
     })
 
-st.title('Short Summary News Application Demo with OneAI')
-st.markdown('This application takes an input from the user and displays upto five latest news articles along with their summary. This application uses the free quota api calls.')
-st.sidebar.image('logo.jpg')
-st.sidebar.title('ONE AI')
-st.sidebar.markdown('[One AI](https://www.oneai.com/) is an API-first, language AI service built for developers. Embed your API to analyze, process, and transform text in your project.')
-st.sidebar.markdown('''It can perform several tasks like
+st.title('Short Summary News Application with Google Gemini')
+st.markdown('This application takes an input from the user and displays up to five latest news articles along with their summary. It uses the free tiers of NewsAPI and the Gemini API.')
+st.sidebar.title('Google Gemini')
+st.sidebar.markdown('[Gemini](https://ai.google.dev/) is Google\'s family of AI models. This app uses a free-tier Gemini Flash model through the Gemini API to write a short summary of each news article.')
+st.sidebar.markdown('''Besides summarization, the Gemini API can do tasks like
 - Sentiment Analysis
 - Named Entity Recognition
 - Topic Analysis
-- Text Summarization
 - Keyword Extraction
-There are several more tasks that One AI can do. Please find the below links to explore more about this:''')
-st.sidebar.markdown('[About us](https://www.oneai.com/about-us)')
-st.sidebar.markdown('[Documentation](https://studio.oneai.com/docs)')
-st.sidebar.markdown('[Contact](https://www.oneai.com/contact-us)')
-st.sidebar.markdown('[Community](https://discord.com/channels/941458663493746698/942326235722309642)')
-st.sidebar.markdown('© 2022 Logo rights reserved to One AI')
+- Question Answering
 
-ONEAI_URL = "https://api.oneai.com/api/v0/pipeline"
+Learn more:''')
+st.sidebar.markdown('[Gemini API documentation](https://ai.google.dev/gemini-api/docs)')
+st.sidebar.markdown('[Get a free API key (Google AI Studio)](https://aistudio.google.com/apikey)')
+st.sidebar.markdown('[NewsAPI](https://newsapi.org)')
+
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"  # free-tier Flash model; override with GEMINI_MODEL
+MAX_ARTICLE_CHARS = 20000  # keep requests small to stay within free-tier token limits
+
+SUMMARY_PROMPT = (
+    "Summarize the following news article in 3 to 4 sentences. "
+    "Cover the main facts: who, what, when and why. "
+    "Use only information from the article and write in plain, neutral language.\n\n"
+    "Article:\n{article}"
+)
 
 # Free-tier keys. Streamlit secrets or environment variables (e.g. Hugging Face
 # Spaces secrets) override these if they are set.
 DEFAULT_KEYS = {
     "NEWSAPI_KEY": "e07356679fcb40e98d44a37b323e9dd6",
-    "ONEAI_API_KEY": "1c93487c-695c-4089-adfc-5e4b7623718c",
 }
 
 
-def get_key(name):
+class MissingKeyError(Exception):
+    pass
+
+
+def get_key(name, default=None):
     try:
         if name in st.secrets:
             return st.secrets[name]
     except Exception:
         pass  # no secrets.toml (e.g. on Hugging Face Spaces)
-    return os.environ.get(name, DEFAULT_KEYS[name])
+    value = os.environ.get(name, DEFAULT_KEYS.get(name, default))
+    if value is None:
+        raise MissingKeyError(f"{name} is not set. Add it to Streamlit secrets or as an environment variable.")
+    return value
 
 
 @st.cache_resource
@@ -61,15 +74,18 @@ def get_newsapi_client():
 def fetch_summary(text):
     # Cached by article text, so the same article is only summarized once a day.
     # Errors are raised (not shown here) so a failed call is never cached.
-    headers = {'api-key': get_key("ONEAI_API_KEY"), 'content-type': 'application/json'}
+    model = get_key("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    headers = {'x-goog-api-key': get_key("GEMINI_API_KEY"), 'content-type': 'application/json'}
     payload = {
-        'input': text,
-        'input_type': 'article',
-        'steps': [{'skill': 'summarize'}]
+        'contents': [{'parts': [{'text': SUMMARY_PROMPT.format(article=text[:MAX_ARTICLE_CHARS])}]}]
     }
-    r = requests.post(ONEAI_URL, json=payload, headers=headers, timeout=60)
+    r = requests.post(GEMINI_URL.format(model=model), json=payload, headers=headers, timeout=60)
     r.raise_for_status()
-    return r.json()['output'][0]['text']
+    parts = r.json()['candidates'][0]['content']['parts']
+    summary_text = ''.join(p.get('text', '') for p in parts if not p.get('thought')).strip()
+    if not summary_text:
+        raise KeyError('empty summary')
+    return summary_text
 
 
 @st.cache_data(ttl=15 * 60, show_spinner=False)
@@ -87,13 +103,24 @@ def fetch_links(query):
 
 def run():
     def summary(text1):
+        if not text1 or not text1.strip():
+            return None
         try:
             return fetch_summary(text1)
+        except MissingKeyError as e:
+            st.error(str(e))
+            return None
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429:
+                st.error("The free Gemini API limit has been reached. Please try again later.")
+            else:
+                st.error(f"Error calling Gemini API: {str(e)}")
+            return None
         except requests.exceptions.RequestException as e:
-            st.error(f"Error calling One AI API: {str(e)}")
+            st.error(f"Error calling Gemini API: {str(e)}")
             return None
         except (KeyError, IndexError) as e:
-            st.error(f"Error processing One AI response: {str(e)}")
+            st.error(f"Error processing Gemini response: {str(e)}")
             return None
 
     def get_links(query):

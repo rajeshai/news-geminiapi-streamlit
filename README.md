@@ -3,16 +3,16 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.28.2-FF4B4B.svg)](https://streamlit.io)
 [![NewsAPI](https://img.shields.io/badge/NewsAPI-Client-orange.svg)](https://newsapi.org)
-[![OneAI](https://img.shields.io/badge/OneAI-API-green.svg)](https://www.oneai.com/)
+[![Gemini](https://img.shields.io/badge/Google%20Gemini-API-4285F4.svg)](https://ai.google.dev/)
 
-A Streamlit web application that fetches recent news articles based on user queries and provides AI-generated summaries using One AI's summarization capabilities. The app helps users stay informed by providing quick access to news with concise summaries.
+A Streamlit web application that fetches recent news articles based on user queries and provides AI-generated summaries from Google's Gemini models (free tier). The app helps users stay informed by providing quick access to news with concise summaries.
 
 
 
 ## Features ✨
 
 - **News Search**: Search for news articles on any topic
-- **AI-Powered Summaries**: Get concise summaries of articles using One AI's natural language processing
+- **AI-Powered Summaries**: Get 3–4 sentence summaries of articles from Google Gemini
 - **Article Preview**: View full articles with their original images
 - **User-Friendly Interface**: Clean and intuitive design built with Streamlit
 - **Expandable Content**: Toggle between summary and full article text
@@ -22,7 +22,7 @@ A Streamlit web application that fetches recent news articles based on user quer
 - **Python 3.10+**
 - **Streamlit**: For the web interface
 - **NewsAPI**: To fetch recent news articles
-- **One AI**: For article summarization
+- **Google Gemini API**: For article summarization
 - **Newspaper3k**: For article parsing and content extraction
 
 ## Installation 💻
@@ -40,12 +40,14 @@ pip install -r requirements.txt
 
 3. Set up your API keys:
    - Get a NewsAPI key from [NewsAPI.org](https://newsapi.org)
-   - Get a One AI API key from [One AI](https://www.oneai.com/)
+   - Get a free Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey)
 
-4. Create a `.env` file in the project root and add your API keys:
-```env
-NEWS_API_KEY=your_news_api_key_here
-ONE_AI_API_KEY=your_one_ai_api_key_here
+4. Create `.streamlit/secrets.toml` and add your keys (or set them as environment variables, e.g. Hugging Face Spaces secrets):
+```toml
+GEMINI_API_KEY = "your_gemini_api_key_here"
+# Optional:
+# NEWSAPI_KEY = "your_news_api_key_here"
+# GEMINI_MODEL = "gemini-3.8-flash"
 ```
 
 ## Usage 🚀
@@ -65,11 +67,11 @@ streamlit run app.py
 
 Create a `requirements.txt` file with the following dependencies:
 ```
-streamlit
-newsapi-python
-newspaper3k
+streamlit>=1.18
 requests
-python-dotenv
+newspaper3k
+lxml[html_clean]
+newsapi-python
 ```
 
 ## Project Structure 📁
@@ -77,7 +79,7 @@ python-dotenv
 ```
 news-summarization-app/
 ├── app.py              # Main application file
-├── .env               # Environment variables (API keys)
+├── .streamlit/secrets.toml  # API keys (not committed)
 ├── requirements.txt   # Project dependencies
 ├── README.md         # Project documentation
 └── assets/
@@ -94,14 +96,10 @@ news-summarization-app/
   - Access to recent articles
   - Multiple news sources
 
-### One AI
-- [One AI Documentation](https://studio.oneai.com/docs)
-- Used for article summarization
-- Features include:
-  - Text Summarization
-  - Sentiment Analysis
-  - Named Entity Recognition
-  - Topic Analysis
+### Google Gemini API
+- [Gemini API Documentation](https://ai.google.dev/gemini-api/docs)
+- Used for article summarization with a free-tier Flash model
+- Free tier is rate-limited; the app shows a message when the limit is reached
 
 ## Contributing 🤝
 
@@ -115,7 +113,8 @@ news-summarization-app/
 ## Acknowledgments 🙏
 
 - [NewsAPI](https://newsapi.org) for providing access to news articles
-- [One AI](https://www.oneai.com/) for their powerful text summarization API
+- [Google Gemini](https://ai.google.dev/) for the summarization model
+- [One AI](https://www.oneai.com/), which powered the original version of this app before the service shut down
 - [Streamlit](https://streamlit.io/) for the awesome web framework
 
 
