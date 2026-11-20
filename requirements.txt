@@ -1,3 +1,5 @@
+streamlit>=1.18
+requests
 newspaper3k
 lxml[html_clean]
 newsapi-python

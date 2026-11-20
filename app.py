@@ -31,25 +31,47 @@ st.sidebar.markdown('[Contact](https://www.oneai.com/contact-us)')
 st.sidebar.markdown('[Community](https://discord.com/channels/941458663493746698/942326235722309642)')
 st.sidebar.markdown('© 2022 Logo rights reserved to One AI')
 
+ONEAI_URL = "https://api.oneai.com/api/v0/pipeline"
+
+
+@st.cache_resource
+def get_newsapi_client():
+    # One NewsAPI client, created once and reused across reruns and users.
+    return NewsApiClient(api_key=st.secrets["NEWSAPI_KEY"])
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def fetch_summary(text):
+    # Cached by article text, so the same article is only summarized once a day.
+    # Errors are raised (not shown here) so a failed call is never cached.
+    headers = {'api-key': st.secrets["ONEAI_API_KEY"], 'content-type': 'application/json'}
+    payload = {
+        'input': text,
+        'input_type': 'article',
+        'steps': [{'skill': 'summarize'}]
+    }
+    r = requests.post(ONEAI_URL, json=payload, headers=headers, timeout=60)
+    r.raise_for_status()
+    return r.json()['output'][0]['text']
+
+
+@st.cache_data(ttl=15 * 60, show_spinner=False)
+def fetch_links(query):
+    # Cached for 15 minutes to save NewsAPI quota on repeated searches.
+    all_articles = get_newsapi_client().get_everything(q=query,
+                                                       language='en',
+                                                       sort_by='relevancy',
+                                                       page_size=5,
+                                                       page=1)
+    if all_articles['status'] != 'ok':
+        raise RuntimeError(all_articles.get('message', 'Unknown error'))
+    return [article['url'] for article in all_articles['articles']]
+
+
 def run():
-    # Initialize NewsAPI client
-    newsapi = NewsApiClient(api_key='e07356679fcb40e98d44a37b323e9dd6')
-    
-    @st.cache()
     def summary(text1):
         try:
-            api_key = "1c93487c-695c-4089-adfc-5e4b7623718c"
-            url = "https://api.oneai.com/api/v0/pipeline"
-            headers = {'api-key': api_key, 'content-type': 'application/json'}
-            payload = {
-                'input': text1,
-                'input_type': 'article',
-                'steps': [{'skill': 'summarize'}]
-            }
-            r = requests.post(url, json=payload, headers=headers)
-            r.raise_for_status()
-            data = r.json()
-            return data['output'][0]['text']
+            return fetch_summary(text1)
         except requests.exceptions.RequestException as e:
             st.error(f"Error calling One AI API: {str(e)}")
             return None
@@ -59,19 +81,7 @@ def run():
 
     def get_links(query):
         try:
-            all_articles = newsapi.get_everything(q=query,
-                                                language='en',
-                                                sort_by='relevancy',
-                                                page_size=5,
-                                                page=1)
-            
-            if all_articles['status'] != 'ok':
-                st.error(f"NewsAPI Error: {all_articles.get('message', 'Unknown error')}")
-                return []
-            
-            links = [article['url'] for article in all_articles['articles']]
-            return links
-            
+            return fetch_links(query)
         except Exception as e:
             st.error(f"Error fetching news: {str(e)}")
             return []
