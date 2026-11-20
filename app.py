@@ -34,14 +34,16 @@ st.sidebar.markdown('[NewsAPI](https://newsapi.org)')
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 # Free-tier models, tried in order. If one is busy (503), rate-limited (429)
 # or not available (404), the next one is used. GEMINI_MODEL, if set, is tried first.
+# Flash-Lite models come first: they answer fastest and have the most free requests.
 FALLBACK_GEMINI_MODELS = [
-    "gemini-3.8-flash",
-    "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
     "gemini-flash-lite-latest",
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
 ]
+REQUEST_TIMEOUT = (10, 30)  # seconds to connect, seconds to wait for the answer
 RETRY_STATUSES = {500, 503}  # temporary server errors worth retrying
-MAX_ARTICLE_CHARS = 20000  # keep requests small to stay within free-tier token limits
+MAX_ARTICLE_CHARS = 12000  # enough for a summary; shorter input means faster answers
 
 SUMMARY_PROMPT = (
     "Summarize the following news article in 3 to 4 sentences. "
@@ -91,7 +93,13 @@ def fetch_summary(text):
     last_error = None
     for model in gemini_models():
         for attempt in range(2):  # one retry per model for temporary errors
-            r = requests.post(GEMINI_URL.format(model=model), json=payload, headers=headers, timeout=60)
+            try:
+                r = requests.post(GEMINI_URL.format(model=model), json=payload, headers=headers,
+                                  timeout=REQUEST_TIMEOUT)
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                last_error = e  # slow or unreachable: try the next model right away
+                r = None
+                break
             if r.ok:
                 parts = r.json()['candidates'][0]['content']['parts']
                 summary_text = ''.join(p.get('text', '') for p in parts if not p.get('thought')).strip()
@@ -106,7 +114,7 @@ def fetch_summary(text):
                 time.sleep(2)
                 continue
             break  # move on to the next model
-        if r.status_code not in RETRY_STATUSES | {404, 429}:
+        if r is not None and r.status_code not in RETRY_STATUSES | {404, 429}:
             raise last_error  # e.g. 400/403: a key or request problem, other models won't help
     raise last_error
 
@@ -141,6 +149,9 @@ def run():
                 st.error("Gemini is busy right now. Please try again in a minute.")
             else:
                 st.error(f"Error calling Gemini API: {str(e)}")
+            return None
+        except requests.exceptions.Timeout:
+            st.error("Gemini took too long to respond. Please try again in a minute.")
             return None
         except requests.exceptions.RequestException as e:
             st.error(f"Error calling Gemini API: {str(e)}")
