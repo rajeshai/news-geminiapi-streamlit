@@ -44,11 +44,12 @@ pip install -r requirements.txt
 
 4. Create `.streamlit/secrets.toml` and add your keys (or set them as environment variables, e.g. Hugging Face Spaces secrets):
 ```toml
+NEWSAPI_KEY = "your_news_api_key_here"
 GEMINI_API_KEY = "your_gemini_api_key_here"
 # Optional:
-# NEWSAPI_KEY = "your_news_api_key_here"
 # GEMINI_MODEL = "gemini-3.8-flash"
 ```
+On Streamlit Community Cloud, paste the same lines into your app's **Settings → Secrets**. Never commit real keys to the repo.
 
 ## Usage 🚀
 
@@ -81,9 +82,7 @@ news-summarization-app/
 ├── app.py              # Main application file
 ├── .streamlit/secrets.toml  # API keys (not committed)
 ├── requirements.txt   # Project dependencies
-├── README.md         # Project documentation
-└── assets/
-    └── logo.jpg      # Application logo
+└── README.md         # Project documentation
 ```
 
 ## API Documentation 📚
@@ -114,7 +113,6 @@ news-summarization-app/
 
 - [NewsAPI](https://newsapi.org) for providing access to news articles
 - [Google Gemini](https://ai.google.dev/) for the summarization model
-- [One AI](https://www.oneai.com/), which powered the original version of this app before the service shut down
 - [Streamlit](https://streamlit.io/) for the awesome web framework
 
 

@@ -41,24 +41,19 @@ SUMMARY_PROMPT = (
     "Article:\n{article}"
 )
 
-# Free-tier keys. Streamlit secrets or environment variables (e.g. Hugging Face
-# Spaces secrets) override these if they are set.
-DEFAULT_KEYS = {
-    "NEWSAPI_KEY": "e07356679fcb40e98d44a37b323e9dd6",
-}
-
-
 class MissingKeyError(Exception):
     pass
 
 
 def get_key(name, default=None):
+    # API keys come from Streamlit secrets or environment variables
+    # (e.g. Hugging Face Spaces secrets), never from the code.
     try:
         if name in st.secrets:
             return st.secrets[name]
     except Exception:
         pass  # no secrets.toml (e.g. on Hugging Face Spaces)
-    value = os.environ.get(name, DEFAULT_KEYS.get(name, default))
+    value = os.environ.get(name, default)
     if value is None:
         raise MissingKeyError(f"{name} is not set. Add it to Streamlit secrets or as an environment variable.")
     return value
