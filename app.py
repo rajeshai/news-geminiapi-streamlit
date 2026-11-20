@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import json
 import requests
@@ -33,18 +34,34 @@ st.sidebar.markdown('© 2022 Logo rights reserved to One AI')
 
 ONEAI_URL = "https://api.oneai.com/api/v0/pipeline"
 
+# Free-tier keys. Streamlit secrets or environment variables (e.g. Hugging Face
+# Spaces secrets) override these if they are set.
+DEFAULT_KEYS = {
+    "NEWSAPI_KEY": "e07356679fcb40e98d44a37b323e9dd6",
+    "ONEAI_API_KEY": "1c93487c-695c-4089-adfc-5e4b7623718c",
+}
+
+
+def get_key(name):
+    try:
+        if name in st.secrets:
+            return st.secrets[name]
+    except Exception:
+        pass  # no secrets.toml (e.g. on Hugging Face Spaces)
+    return os.environ.get(name, DEFAULT_KEYS[name])
+
 
 @st.cache_resource
 def get_newsapi_client():
     # One NewsAPI client, created once and reused across reruns and users.
-    return NewsApiClient(api_key=st.secrets["NEWSAPI_KEY"])
+    return NewsApiClient(api_key=get_key("NEWSAPI_KEY"))
 
 
 @st.cache_data(ttl=24 * 3600, show_spinner=False)
 def fetch_summary(text):
     # Cached by article text, so the same article is only summarized once a day.
     # Errors are raised (not shown here) so a failed call is never cached.
-    headers = {'api-key': st.secrets["ONEAI_API_KEY"], 'content-type': 'application/json'}
+    headers = {'api-key': get_key("ONEAI_API_KEY"), 'content-type': 'application/json'}
     payload = {
         'input': text,
         'input_type': 'article',
